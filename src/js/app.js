@@ -1,68 +1,86 @@
 App = {
   web3Provider: null,
   contracts: {},
+  account: '0x0',
 
-  init: async function() {
-    // Load pets.
-    $.getJSON('../pets.json', function(data) {
-      var petsRow = $('#petsRow');
-      var petTemplate = $('#petTemplate');
+  init: () => App.initWeb3(),
 
-      for (i = 0; i < data.length; i ++) {
-        petTemplate.find('.panel-title').text(data[i].name);
-        petTemplate.find('img').attr('src', data[i].picture);
-        petTemplate.find('.pet-breed').text(data[i].breed);
-        petTemplate.find('.pet-age').text(data[i].age);
-        petTemplate.find('.pet-location').text(data[i].location);
-        petTemplate.find('.btn-adopt').attr('data-id', data[i].id);
+  initWeb3: () => {
+    if (typeof web3 !== 'undefined') {
+      App.web3Provider = web3.currentProvider
+      web3 = new Web3(web3.currentProvider)
+    } else {
+      App.web3Provider = new Web3.providers.HttpProvider(
+        'http://localhost:7545'
+      )
+      web3 = new Web3(App.web3Provider)
+    }
 
-        petsRow.append(petTemplate.html());
+    return App.initContract()
+  },
+
+  initContract: () => {
+    $.getJSON('Election.json', (election) => {
+      App.contracts.Election = TruffleContract(election)
+      App.contracts.Election.setProvider(App.web3Provider)
+
+      App.render()
+    })
+  },
+
+  render: async () => {
+    const loader = $('#loader')
+    const content = $('#content')
+
+    loader.show()
+    content.hide()
+
+    web3.eth.getCoinbase((err, account) => {
+      if (err) {
+        $('#account-address').html(`Failed to get your Account: ${err.message}`)
+        return
       }
-    });
 
-    return await App.initWeb3();
+      App.account = account
+      $('#account-address').html(`Your Account: ${account}`)
+    })
+
+    const candidatesResults = $('#candidate-results')
+    candidatesResults.empty()
+
+    const electionInstance = await App.contracts.Election.deployed()
+    const candidatesCount = await electionInstance.candidatesCount()
+
+    let promises = []
+    for (let i = 1; i <= candidatesCount; i++) {
+      promises.push(
+        electionInstance.candidates(i).then((candidate) => {
+          console.log(candidate)
+          candidatesResults.append(`
+            <tr>
+              <td>${candidate[0].toNumber()}</td>
+              <td>${candidate[1]}</td>
+              <td>${candidate[2].toNumber()}</td>
+            </tr>
+          `)
+        })
+      )
+    }
+
+    try {
+      await Promise.all(promises)
+    } catch (err) {
+      // TODO: handle this better
+      console.error(err)
+    }
+
+    loader.hide()
+    content.show()
   },
+}
 
-  initWeb3: async function() {
-    /*
-     * Replace me...
-     */
-
-    return App.initContract();
-  },
-
-  initContract: function() {
-    /*
-     * Replace me...
-     */
-
-    return App.bindEvents();
-  },
-
-  bindEvents: function() {
-    $(document).on('click', '.btn-adopt', App.handleAdopt);
-  },
-
-  markAdopted: function() {
-    /*
-     * Replace me...
-     */
-  },
-
-  handleAdopt: function(event) {
-    event.preventDefault();
-
-    var petId = parseInt($(event.target).data('id'));
-
-    /*
-     * Replace me...
-     */
-  }
-
-};
-
-$(function() {
-  $(window).load(function() {
-    App.init();
-  });
-});
+$(function () {
+  $(window).load(function () {
+    App.init()
+  })
+})
