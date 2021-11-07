@@ -48,27 +48,36 @@ App = {
     const candidatesResults = $('#candidate-results')
     candidatesResults.empty()
 
-    const electionInstance = await App.contracts.Election.deployed()
-    const candidatesCount = await electionInstance.candidatesCount()
-
-    let promises = []
-    for (let i = 1; i <= candidatesCount; i++) {
-      promises.push(
-        electionInstance.candidates(i).then((candidate) => {
-          console.log(candidate)
-          candidatesResults.append(`
-            <tr>
-              <td>${candidate[0].toNumber()}</td>
-              <td>${candidate[1]}</td>
-              <td>${candidate[2].toNumber()}</td>
-            </tr>
-          `)
-        })
-      )
-    }
+    const candidatesSelect = $('#candidates-select')
+    candidatesSelect.empty()
 
     try {
-      await Promise.all(promises)
+      const electionInstance = await App.contracts.Election.deployed()
+      const candidatesCount = await electionInstance.candidatesCount()
+
+      const candidates = await Promise.all(
+        new Array(candidatesCount.toNumber())
+          .fill(0)
+          .map((_, i) => electionInstance.candidates(i + 1))
+      )
+
+      for (let candidate of candidates) {
+        candidatesResults.append(`
+          <tr>
+            <td>${candidate[0].toNumber()}</td>
+            <td>${candidate[1]}</td>
+            <td>${candidate[2].toNumber()}</td>
+          </tr>
+        `)
+        candidatesSelect.append(
+          `<option value="${candidate[0].toNumber()}">${candidate[1]}</option>`
+        )
+      }
+
+      const hasVoted = await electionInstance.voters(App.account)
+      if (hasVoted) {
+        $('#vote-btn').attr('disabled', true)
+      }
     } catch (err) {
       // TODO: handle this better
       console.error(err)
@@ -76,6 +85,29 @@ App = {
 
     loader.hide()
     content.show()
+  },
+
+  castVote: async () => {
+    const btn = $('#vote-btn')
+    btn.attr('disabled', true)
+
+    try {
+      const electionInstance = await App.contracts.Election.deployed()
+      const hasVoted = await electionInstance.voters(App.account)
+      if (hasVoted) {
+        return
+      }
+
+      const candidate = parseInt($('#candidates-select').val())
+
+      await electionInstance.vote(candidate, { from: App.account })
+
+      await App.render()
+    } catch (err) {
+      // TODO: handle this better
+      console.error(err)
+      btn.attr('disabled', false)
+    }
   },
 }
 
